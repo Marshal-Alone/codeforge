@@ -28,6 +28,16 @@ function saveSolved() {
   localStorage.setItem('cf_solved', JSON.stringify(state.solvedProblems));
 }
 
+function loadSubmissions() {
+  return JSON.parse(localStorage.getItem('cf_answered') || '{}');
+}
+
+function getProblemTitle(p) {
+  if (!p) return '';
+  const baseTitle = p.title.replace(/^Q\d+:\s*/i, '');
+  return p.id ? `Q${p.id}: ${baseTitle}` : baseTitle;
+}
+
 // ============================================
 // Navigation Helpers
 // ============================================
@@ -63,16 +73,38 @@ function submitCode() {
   }
 
   const p = state.currentProblem;
-  if (!p || !state.editor) return;
+  if (!p) return;
 
-  const code = state.editor.getValue();
+  let code;
+  let language = 'theory';
+  let testResults = state.lastTestResults;
+
+  if (p.type === 'coding') {
+    if (!state.editor) return;
+    code = state.editor.getValue();
+    language = document.getElementById('lang-select')?.value || 'java';
+  } else {
+    const answerEl = document.getElementById('theory-answer');
+    if (!answerEl) {
+      showToast('❌ Answer box missing.');
+      return;
+    }
+    code = answerEl.value.trim();
+    if (!code) {
+      showToast('❌ Please write your answer before submitting.');
+      return;
+    }
+    testResults = testResults || [];
+    state.lastTestResults = testResults;
+  }
+
   const answer = {
     problemId: p.id,
     problemTitle: p.title,
     code: code,
-    language: document.getElementById('lang-select')?.value || 'java',
+    language: language,
     submittedAt: new Date().toISOString(),
-    testResults: state.lastTestResults
+    testResults: testResults
   };
 
   // Store in localStorage under answeredProblems
@@ -113,6 +145,9 @@ function router() {
   } else if (route === '/problems') {
     state.currentPage = 'problems';
     renderProblems(content);
+  } else if (route === '/submissions') {
+    state.currentPage = 'submissions';
+    renderSubmissions(content);
   } else if (route.startsWith('/workspace/')) {
     state.currentPage = 'workspace';
     const problemId = parseInt(route.split('/')[2]);
@@ -315,7 +350,7 @@ function renderProblemList() {
       <div class="problem-card" data-id="${p.id}">
         <span class="problem-id">#${String(i + 1).padStart(2, '0')}</span>
         <div class="problem-info">
-          <h3>${p.title}</h3>
+          <h3>${getProblemTitle(p)}</h3>
           <div class="problem-tags">
             ${(p.tags || []).map(t => `<span class="tag">${t}</span>`).join('')}
           </div>
@@ -345,6 +380,9 @@ function renderWorkspace(container) {
     return;
   }
 
+  const submissions = loadSubmissions();
+  const existingSubmission = submissions[p.id];
+
   container.innerHTML = `
     <div class="workspace-page fade-in">
       <div class="workspace-problem" id="workspace-problem-panel">
@@ -366,8 +404,12 @@ function renderWorkspace(container) {
         </div>
         <div class="workspace-problem-content">
           <div class="problem-header">
-            <h2>${p.title}</h2>
+            <h2>${getProblemTitle(p)}</h2>
             <span class="difficulty-badge ${p.difficulty}">${p.difficulty}</span>
+          </div>
+          <div id="submitted-answer-info" style="margin-top: 10px; font-size: 0.9rem;
+            border-radius: 8px; border: 1px dashed var(--accent-secondary); padding: 8px; display: none;
+            background: rgba(16, 185, 129, 0.09); color: var(--success);">
           </div>
           
           <div style="padding: 0 var(--space-lg);">
@@ -438,6 +480,13 @@ function renderWorkspace(container) {
             </ul>
           ` : ''}
           </div>
+          ${p.type === 'theory' ? `
+          <div class="problem-section" style="border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-top: 14px;">
+            <h3>📝 Your Answer</h3>
+            <textarea id="theory-answer" style="width:100%; min-height:120px; margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">${existingSubmission?.code || ''}</textarea>
+            <p style="margin-top:8px; color: var(--text-secondary); font-size: 0.85rem;">Your submitted answer is saved to the Submissions page.</p>
+          </div>
+          ` : ''}
           <div class="solution-box" id="solution-box">
             <h4><i class="fas fa-eye"></i> Show ${p.type === 'theory' ? 'Answer' : 'Solution Code'} (Click to toggle)</h4>
             <div class="solution-code" id="solution-container">
@@ -617,8 +666,31 @@ function renderWorkspace(container) {
   }
 
   if (p.type === 'coding') {
+    const submissions = loadSubmissions();
+    const existingSubmission = submissions[p.id];
+    const startCode = existingSubmission?.code || p.starterCode || p.solution || '// Write your Java code here\n';
+
     // Init Monaco Editor
-    initMonaco(p.starterCode || p.solution || '// Write your Java code here\n');
+    initMonaco(startCode);
+
+    if (existingSubmission) {
+      const submitInfo = document.getElementById('submitted-answer-info');
+      if (submitInfo) {
+        submitInfo.style.display = 'block';
+        submitInfo.innerHTML = `✅ Submitted answer loaded. Last submitted: ${new Date(existingSubmission.submittedAt).toLocaleString()} (` +
+          `<span style="font-weight: 600;">${existingSubmission.language}</span>)`;
+      }
+
+      state.allTestsPassed = true;
+      state.lastTestResults = existingSubmission.testResults || null;
+      const submitBtn = document.getElementById('submit-btn');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.innerHTML = '<i class="fas fa-upload"></i> Submit Answer';
+      }
+    }
 
     // Navigation buttons
     const prevBtn = document.getElementById('prev-btn');
@@ -682,9 +754,35 @@ function renderWorkspace(container) {
     // For theory questions, adjust grid to single column and dispose editor
     container.querySelector('.workspace-page').style.display = 'block';
     container.querySelector('.workspace-problem').style.borderRight = 'none';
+
     if (state.editor) {
       state.editor.dispose();
       state.editor = null;
+    }
+
+    // Allow submit for theory questions without runtime tests
+    state.allTestsPassed = true;
+    const submitBtn = document.getElementById('submit-btn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.style.cursor = 'pointer';
+      submitBtn.innerHTML = '<i class="fas fa-upload"></i> Submit Answer';
+    }
+
+    // Show previous submitted answer (if any)
+    const existingSubmission = loadSubmissions()[p.id];
+    if (existingSubmission) {
+      const textarea = document.getElementById('theory-answer');
+      if (textarea) {
+        textarea.value = existingSubmission.code;
+      }
+      const submitInfo = document.getElementById('submitted-answer-info');
+      if (submitInfo) {
+        submitInfo.style.display = 'block';
+        submitInfo.innerHTML = `✅ Submitted answer loaded. Last submitted: ${new Date(existingSubmission.submittedAt).toLocaleString()} (` +
+          `<span style="font-weight: 600;">${existingSubmission.language}</span>)`;
+      }
     }
   }
 }
@@ -970,6 +1068,34 @@ function renderSettings(container) {
   });
 }
 
+function renderSubmissions(container) {
+  const answered = loadSubmissions();
+  const keys = Object.keys(answered);
+  container.innerHTML = `
+    <div class="submissions-page fade-in">
+      <h1><i class="fas fa-file-alt"></i> Submissions</h1>
+      <p style="color: var(--text-secondary); margin-bottom: var(--space-md);">Total submissions: ${keys.length}</p>
+      <div class="submission-list">
+        ${keys.length === 0 ? '<div class="empty-state">No submissions yet. Submit a problem to see it here.</div>' : ''}
+        ${keys.map((problemId) => {
+          const item = answered[problemId];
+          const problem = problems.find(p => p.id === Number(problemId));
+          return `
+            <div class="submission-card" onclick="window.location.hash='#/workspace/${problemId}'" style="cursor: pointer;">
+              <div class="submission-header">
+                <strong>${problem ? getProblemTitle(problem) : `Q${problemId}`}</strong>
+                <span class="tag submitted">Submitted</span>
+              </div>
+              <div class="submission-meta">Language: ${item.language} · Submitted: ${new Date(item.submittedAt).toLocaleString()}</div>
+              <pre class="submission-code">${escapeHtml(item.code)}</pre>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function showToast(message) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -1078,7 +1204,11 @@ async function sendAIMessage(prompt) {
 
     const assistantMsg = document.createElement('div');
     assistantMsg.className = 'ai-message assistant';
-    assistantMsg.innerHTML = typeof marked !== 'undefined' ? marked.parse(response) : response.replace(/\n/g, '<br>');
+    const formattedResponse = typeof marked !== 'undefined' ? marked.parse(response) : response.replace(/\n/g, '<br>');
+    assistantMsg.innerHTML = `
+      <div class="ai-response-header"><i class="fas fa-robot"></i> AI Answer</div>
+      <div class="ai-response-body">${formattedResponse}</div>
+    `;
     messagesDiv.appendChild(assistantMsg);
   } catch (err) {
     typingMsg.remove();

@@ -28,6 +28,10 @@ const SYSTEM_PROMPT = `You are CodeForge AI, a coding tutor for TCS NQT preparat
 - Keep code snippets to max 3-4 lines if absolutely needed`;
 
 export async function askAI(prompt, provider, groqKey, geminiKey, currentProblem) {
+  // Use provided keys or fallback to environment variables
+  const finalGroqKey = groqKey || import.meta.env.VITE_GROQ_API_KEY;
+  const finalGeminiKey = geminiKey || import.meta.env.VITE_GEMINI_API_KEY;
+
   const context = currentProblem
     ? `\n\n[Context — Problem: "${currentProblem.title}", Category: ${currentProblem.category}, Difficulty: ${currentProblem.difficulty}]`
     : '';
@@ -35,9 +39,9 @@ export async function askAI(prompt, provider, groqKey, geminiKey, currentProblem
   const fullPrompt = prompt + context;
 
   if (provider === 'groq') {
-    return await callGroq(fullPrompt, groqKey);
+    return await callGroq(fullPrompt, finalGroqKey);
   } else {
-    return await callGemini(fullPrompt, geminiKey);
+    return await callGemini(fullPrompt, finalGeminiKey);
   }
 }
 

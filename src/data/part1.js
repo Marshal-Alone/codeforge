@@ -17,7 +17,7 @@ export const part1 = [
     solution: 'public class Main {\n    public static void main(String[] args) {\n        int arr[] = {12, 35, 1, 10, 34, 1};\n        int largest = arr[0], secondLargest = Integer.MIN_VALUE;\n        for (int i = 1; i < arr.length; i++) {\n            if (arr[i] > largest) { secondLargest = largest; largest = arr[i]; }\n            else if (arr[i] > secondLargest && arr[i] != largest) secondLargest = arr[i];\n        }\n        System.out.println(secondLargest);\n    }\n}'
   },
   {
-    id: 2, title: 'Reverse Array In-Place', category: 'arrays', difficulty: 'easy', type: 'coding', tags: ['Array', 'Two Pointers'],
+    id: 2, title: 'Q2: Reverse Array In-Place', category: 'arrays', difficulty: 'easy', type: 'coding', tags: ['Array', 'Two Pointers'],
     description: 'Write a program to reverse an array in-place without using extra space.',
     examples: [
       { input: 'arr = {1, 2, 3, 4}', output: '[4, 3, 2, 1]' },
