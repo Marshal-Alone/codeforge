@@ -128,6 +128,30 @@ function navigate(path) {
   window.location.hash = path;
 }
 
+function formatAIResponse(rawText) {
+  let html;
+  const parser = (typeof window !== 'undefined' && window.marked) ? window.marked : (typeof marked !== 'undefined' ? marked : null);
+
+  if (parser && typeof parser.parse === 'function') {
+    html = parser.parse(rawText);
+  } else {
+    // Basic markdown fallback
+    html = rawText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+
+    html = `<p>${html}</p>`;
+  }
+
+  return html;
+}
+
 function router() {
   const route = getRoute();
   const content = document.getElementById('page-content');
@@ -1204,7 +1228,9 @@ async function sendAIMessage(prompt) {
 
     const assistantMsg = document.createElement('div');
     assistantMsg.className = 'ai-message assistant';
-    const formattedResponse = typeof marked !== 'undefined' ? marked.parse(response) : response.replace(/\n/g, '<br>');
+
+    const formattedResponse = formatAIResponse(response);
+
     assistantMsg.innerHTML = `
       <div class="ai-response-header"><i class="fas fa-robot"></i> AI Answer</div>
       <div class="ai-response-body">${formattedResponse}</div>
