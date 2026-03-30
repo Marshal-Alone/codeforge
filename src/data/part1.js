@@ -115,10 +115,18 @@ export const part1 = [
   {
     id: 9, title: 'Anagram Check', category: 'strings', difficulty: 'medium', type: 'coding', tags: ['String', 'Sorting'],
     description: 'Check whether two strings are anagrams of each other.',
-    examples: [{ input: 's1 = "Listen", s2 = "Silent"', output: 'Anagrams' }],
+    examples: [
+      { input: 's1 = "Listen", s2 = "Silent"', output: 'Anagrams' },
+      { input: 's1 = "Hello", s2 = "World"', output: 'Not anagrams' },
+      { input: 's1 = "abc", s2 = "bca"', output: 'Anagrams' },
+      { input: 's1 = "Abc", s2 = "cab"', output: 'Anagrams' },
+      { input: 's1 = "a", s2 = "a"', output: 'Anagrams' },
+      { input: 's1 = "a", s2 = "b"', output: 'Not anagrams' },
+      { input: 's1 = "", s2 = ""', output: 'Anagrams' }
+    ],
     hints: ['Sort both strings and compare.'],
-    starterCode: 'import java.util.Arrays;\npublic class Main {\n    public static void main(String[] args) {\n        String s1 = "Listen", s2 = "Silent";\n        // Your code here\n    }\n}',
-    solution: 'import java.util.Arrays;\npublic class Main {\n    public static void main(String[] args) {\n        String s1 = "Listen", s2 = "Silent";\n        char[] a = s1.toLowerCase().toCharArray(), b = s2.toLowerCase().toCharArray();\n        Arrays.sort(a); Arrays.sort(b);\n        System.out.println(Arrays.equals(a, b) ? "Anagrams" : "Not anagrams");\n    }\n}'
+    starterCode: 'import java.util.Arrays;\npublic class Main {\n    public static void main(String[] args) {\n        String s1 = "Listen";\n        String s2 = "Silent";\n        // Your code here\n    }\n}',
+    solution: 'import java.util.Arrays;\npublic class Main {\n    public static void main(String[] args) {\n        String s1 = "Listen";\n        String s2 = "Silent";\n        char[] a = s1.toLowerCase().toCharArray(), b = s2.toLowerCase().toCharArray();\n        Arrays.sort(a); Arrays.sort(b);\n        System.out.println(Arrays.equals(a, b) ? "Anagrams" : "Not anagrams");\n    }\n}'
   },
   {
     id: 10, title: 'Convert to Lowercase', category: 'strings', difficulty: 'easy', type: 'coding', tags: ['String', 'Basics'],

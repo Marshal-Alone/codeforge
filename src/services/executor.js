@@ -24,38 +24,30 @@ export async function executeCode(code, language, testcases = []) {
   }
 
   if (!testcases || testcases.length === 0) {
-    return [await runSingle(code, langConfig.compiler)];
+    return [await runSingleWithTimeout(code, langConfig.compiler)];
   }
 
-  // Run multiple testcases concurrently
-  const promises = testcases.map(async (tc, index) => {
+  // Run testcases sequentially to avoid API overload
+  const results = [];
+  for (let index = 0; index < testcases.length; index++) {
+    const tc = testcases[index];
     let testCode = code;
     
     // Inject testcase inputs into code via RegEx
-    // tc.input usually looks like: "arr = {10, 20}, n = 5" or "str = \"hello\""
     const variables = tc.input.split(/,(?![^{]*\})/).map(s => s.trim());
     
     for (const v of variables) {
-      // Split "name = value"
       const eqIdx = v.indexOf('=');
       if (eqIdx === -1) continue;
       
       const varName = v.slice(0, eqIdx).trim();
       const varval = v.slice(eqIdx + 1).trim();
-      
-      // Escape special regex characters in variable name
       const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Replace variable assignment in code (Java/C++ arrays, strings, basic primitives)
-      // e.g., int[] arr = {1, 2, 3}; -> int[] arr = {10, 20};
-      // e.g., String str = "hi"; -> String str = "hello";
       
       let regexStr;
       if (language === 'python') {
-         // Match: varName = anything_until_newline
          regexStr = `(\\b${escapedVarName}\\s*)=[^\\n]*`;
       } else {
-         // Java/JS/C++ handle semicolon ends. Match: varName (with optional type/brackets) = anything_until_semicolon ;
          regexStr = `(\\b${escapedVarName}\\s*(?:\\[\\])?\\s*)=[^;]*;`;
       }
       
@@ -67,17 +59,36 @@ export async function executeCode(code, language, testcases = []) {
       }
     }
 
-    const { output, error } = await runSingle(testCode, langConfig.compiler);
-    return {
+    // Run with timeout and retry on failure
+    let result = await runWithRetry(testCode, langConfig.compiler, 2);
+    results.push({
       index,
       input: tc.input,
       expected: tc.expected,
-      output: (output || '').trim(),
-      error
-    };
-  });
+      output: (result.output || '').trim(),
+      error: result.error
+    });
+  }
 
-  return await Promise.all(promises);
+  return results;
+}
+
+async function runWithRetry(code, compiler, maxRetries = 2) {
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await runSingleWithTimeout(code, compiler);
+      if (!result.error) {
+        return result; // Success, no error
+      }
+      lastError = result.error;
+    } catch (error) {
+      lastError = error.message;
+    }
+  }
+  
+  return { output: '', error: lastError };
 }
 
 async function runSingle(code, compiler) {
@@ -104,5 +115,17 @@ async function runSingle(code, compiler) {
     };
   } catch (error) {
     return { error: `Network error: ${error.message}` };
+  }
+}
+
+async function runSingleWithTimeout(code, compiler, timeoutMs = 30000) {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Execution timeout: exceeded ${timeoutMs}ms limit`)), timeoutMs)
+  );
+
+  try {
+    return await Promise.race([runSingle(code, compiler), timeoutPromise]);
+  } catch (error) {
+    return { error: error.message };
   }
 }
