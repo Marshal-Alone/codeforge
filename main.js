@@ -83,7 +83,37 @@ function submitCode() {
     if (!state.editor) return;
     code = state.editor.getValue();
     language = document.getElementById('lang-select')?.value || 'java';
+  } else if (p.options) {
+    // MCQ problem - get selected answer
+    const selectedRadio = document.querySelector('input[name="mcq-answer"]:checked');
+    if (!selectedRadio) {
+      showToast('❌ Please select an answer before submitting.');
+      return;
+    }
+    code = selectedRadio.value; // Store the letter (A, B, C, D)
+
+    // Validate answer and show feedback
+    const isCorrect = code === p.correctAnswer;
+    const feedback = document.getElementById('mcq-feedback');
+    if (feedback) {
+      feedback.style.display = 'block';
+      if (isCorrect) {
+        feedback.innerHTML = `✅ <strong>Correct!</strong> ${p.explanation || 'Well done!'}`;
+        feedback.style.background = 'rgba(16, 185, 129, 0.15)';
+        feedback.style.color = 'var(--success)';
+        feedback.style.borderLeft = '4px solid var(--success)';
+      } else {
+        const correctLetter = p.correctAnswer;
+        const correctOption = p.options[correctLetter.charCodeAt(0) - 65];
+        feedback.innerHTML = `❌ <strong>Incorrect.</strong> You selected ${code}, but the correct answer is <strong>${correctLetter}</strong>. ${p.explanation || 'Try again!'}`;
+        feedback.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedback.style.color = '#ef4444';
+        feedback.style.borderLeft = '4px solid #ef4444';
+      }
+    }
+    testResults = [{ passed: isCorrect }];
   } else {
+    // Free-form theory answer
     const answerEl = document.getElementById('theory-answer');
     if (!answerEl) {
       showToast('❌ Answer box missing.');
@@ -113,7 +143,11 @@ function submitCode() {
   localStorage.setItem('cf_answered', JSON.stringify(answered));
 
   // Show confirmation
-  showToast('✅ Answer submitted successfully!');
+  if (p.options) {
+    showToast('✅ Answer submitted successfully!');
+  } else {
+    showToast('✅ Answer submitted successfully!');
+  }
 }
 
 // ============================================
@@ -176,8 +210,8 @@ function router() {
     state.currentPage = 'workspace';
     const problemId = parseInt(route.split('/')[2]);
     if (state.solutionEditor) {
-        state.solutionEditor.dispose();
-        state.solutionEditor = null;
+      state.solutionEditor.dispose();
+      state.solutionEditor = null;
     }
     state.currentProblem = problems.find(p => p.id === problemId);
     renderWorkspace(content);
@@ -213,18 +247,18 @@ function normalizeResults(results) {
 
 function compareOutput(output, expected) {
   if (output === undefined || expected === undefined) return false;
-  
+
   const norm = str => str.toLowerCase().replace(/\s+/g, ' ').trim();
   const a = norm(output);
   const e = norm(expected);
-  
+
   // Exact match
   if (a === e) return true;
-  
+
   // Suffix match: output ends with expected value
   // e.g., "second largest: 34" ends with "34"
   if (a.endsWith(e)) return true;
-  
+
   // Suffix match with word boundary: last token matches expected
   // e.g., "result: 34" -> splits to ["result:", "34"], last = "34"
   const aSegments = a.split(/[\s:,;\-]+/).filter(s => s.length > 0);
@@ -506,13 +540,35 @@ function renderWorkspace(container) {
           </div>
           ${p.type === 'theory' ? `
           <div class="problem-section" style="border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-top: 14px;">
-            <h3>📝 Your Answer</h3>
-            <textarea id="theory-answer" style="width:100%; min-height:120px; margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">${existingSubmission?.code || ''}</textarea>
-            <p style="margin-top:8px; color: var(--text-secondary); font-size: 0.85rem;">Your submitted answer is saved to the Submissions page.</p>
+            ${p.options ? `
+              <h3>📝 Question & Options</h3>
+              <div style="margin-top: 12px; padding: 12px; background: rgba(124, 58, 237, 0.1); border-radius: 8px; margin-bottom: 16px;">
+                <p style="font-weight: 500; margin-bottom: 12px;">${p.question || p.description}</p>
+                <div class="mcq-options" id="mcq-options">
+                  ${(p.options || []).map((option, idx) => {
+    const letter = String.fromCharCode(65 + idx); // A, B, C, D
+    const isSelected = existingSubmission?.code === letter;
+    return `
+                    <div class="mcq-option" data-answer="${letter}" style="margin-bottom: 10px; cursor: pointer; padding: 12px; border: 2px solid var(--border); border-radius: 6px; transition: all 0.2s; ${isSelected ? 'border-color: var(--accent); background: rgba(124, 58, 237, 0.15);' : 'hover: border-color: var(--accent);'}">
+                      <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0;">
+                        <input type="radio" name="mcq-answer" value="${letter}" ${isSelected ? 'checked' : ''} style="cursor: pointer; width: 20px; height: 20px;">
+                        <span><strong>${letter})</strong> ${option}</span>
+                      </label>
+                    </div>
+                    `;
+  }).join('')}
+                </div>
+                <div id="mcq-feedback" style="margin-top: 12px; padding: 10px; border-radius: 6px; display: none; font-weight: 500;"></div>
+              </div>
+            ` : `
+              <h3>📝 Your Answer</h3>
+              <textarea id="theory-answer" style="width:100%; min-height:120px; margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);">${existingSubmission?.code || ''}</textarea>
+              <p style="margin-top:8px; color: var(--text-secondary); font-size: 0.85rem;">Your submitted answer is saved to the Submissions page.</p>
+            `}
           </div>
           ` : ''}
           <div class="solution-box" id="solution-box">
-            <h4><i class="fas fa-eye"></i> Show ${p.type === 'theory' ? 'Answer' : 'Solution Code'} (Click to toggle)</h4>
+            <h4><i class="fas fa-eye"></i> Show ${p.type === 'theory' ? 'Solution & Explanation' : 'Solution Code'} (Click to toggle)</h4>
             <div class="solution-code" id="solution-container">
               <div id="solution-editor"></div>
             </div>
@@ -558,7 +614,7 @@ function renderWorkspace(container) {
         <div class="panel-content active" id="tc-view">
           <div class="tc-subtabs">
             ${(p.examples || []).map((ex, i) => `
-              <button class="tc-tab ${i === 0 ? 'active' : ''}" data-index="${i}">TC ${String(i+1).padStart(2, '0')}</button>
+              <button class="tc-tab ${i === 0 ? 'active' : ''}" data-index="${i}">TC ${String(i + 1).padStart(2, '0')}</button>
             `).join('')}
           </div>
           <div class="tc-bodies">
@@ -594,7 +650,7 @@ function renderWorkspace(container) {
     solBox.addEventListener('click', function (e) {
       // Don't toggle if clicking on editor content
       if (e.target.closest('#solution-editor')) return;
-      
+
       this.classList.toggle('revealed');
       if (this.classList.contains('revealed') && !state.solutionEditor && p.solution && p.type === 'coding') {
         // Ensure Monaco is loaded
@@ -638,7 +694,7 @@ function renderWorkspace(container) {
       const container = document.querySelector('.workspace-editor');
       const containerRect = container.getBoundingClientRect();
       const newHeight = containerRect.bottom - e.clientY;
-      
+
       if (newHeight >= 100 && newHeight <= containerRect.height - 100) {
         tcPanel.style.height = `${newHeight}px`;
         tcPanel.style.flex = 'none';
@@ -674,7 +730,7 @@ function renderWorkspace(container) {
       const totalWidth = pageRect.width;
       const minWidth = 300;
       const maxWidth = totalWidth - 300;
-      
+
       if (newWidth >= minWidth && newWidth <= maxWidth) {
         const splitRatio = (newWidth / totalWidth) * 100;
         workspacePage.style.setProperty('--split-ratio', `${splitRatio}%`);
@@ -784,6 +840,37 @@ function renderWorkspace(container) {
       state.editor = null;
     }
 
+    // MCQ Event Listeners - handle option selection
+    if (p.options) {
+      const mcqOptions = document.querySelectorAll('.mcq-option');
+      mcqOptions.forEach(option => {
+        const radio = option.querySelector('input[type="radio"]');
+
+        // Update styles on click
+        option.addEventListener('click', (e) => {
+          if (!e.target.closest('input[type="radio"]')) {
+            radio.checked = true;
+          }
+
+          // Update visual state
+          mcqOptions.forEach(opt => {
+            opt.style.borderColor = 'var(--border)';
+            opt.style.background = 'transparent';
+          });
+          option.style.borderColor = 'var(--accent)';
+          option.style.background = 'rgba(124, 58, 237, 0.15)';
+        });
+
+        // Clear feedback when selection changes
+        radio.addEventListener('change', () => {
+          const feedback = document.getElementById('mcq-feedback');
+          if (feedback) {
+            feedback.style.display = 'none';
+          }
+        });
+      });
+    }
+
     // Allow submit for theory questions without runtime tests
     state.allTestsPassed = true;
     const submitBtn = document.getElementById('submit-btn');
@@ -797,9 +884,23 @@ function renderWorkspace(container) {
     // Show previous submitted answer (if any)
     const existingSubmission = loadSubmissions()[p.id];
     if (existingSubmission) {
-      const textarea = document.getElementById('theory-answer');
-      if (textarea) {
-        textarea.value = existingSubmission.code;
+      if (p.options) {
+        // MCQ - show that answer was previously selected
+        const selectedRadio = document.querySelector(`input[value="${existingSubmission.code}"]`);
+        if (selectedRadio) {
+          selectedRadio.checked = true;
+          const option = selectedRadio.closest('.mcq-option');
+          if (option) {
+            option.style.borderColor = 'var(--accent)';
+            option.style.background = 'rgba(124, 58, 237, 0.15)';
+          }
+        }
+      } else {
+        // Free-form theory
+        const textarea = document.getElementById('theory-answer');
+        if (textarea) {
+          textarea.value = existingSubmission.code;
+        }
       }
       const submitInfo = document.getElementById('submitted-answer-info');
       if (submitInfo) {
@@ -891,7 +992,7 @@ async function runCode() {
 
   const code = state.editor.getValue();
   const lang = document.getElementById('lang-select').value;
-  
+
   // 1. Prep Test Cases (Visible + Hidden)
   const visible = normalizeTestCases(p.examples || []);
   const hidden = normalizeTestCases(p.hiddenTests || []);
@@ -912,7 +1013,7 @@ async function runCode() {
     const allPassed = (passedCount === totalCount);
 
     output.innerHTML = '';
-    
+
     if (totalCount > 0) {
       // 1. Result Status Header with Score
       const header = document.createElement('div');
@@ -1014,7 +1115,7 @@ async function runCode() {
     }
   } catch (err) {
     output.innerHTML = `<div style="color: var(--error); padding: 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);">Error: ${escapeHtml(err.message)}</div>`;
-    
+
     // Disable submit on error
     state.allTestsPassed = false;
     const submitBtn = document.getElementById('submit-btn');
@@ -1025,7 +1126,7 @@ async function runCode() {
       submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit (Error occurred)';
     }
   }
-  
+
   runBtn.disabled = false;
   runBtn.innerHTML = '<i class="fas fa-play"></i> Run Code';
 }
@@ -1102,9 +1203,9 @@ function renderSubmissions(container) {
       <div class="submission-list">
         ${keys.length === 0 ? '<div class="empty-state">No submissions yet. Submit a problem to see it here.</div>' : ''}
         ${keys.map((problemId) => {
-          const item = answered[problemId];
-          const problem = problems.find(p => p.id === Number(problemId));
-          return `
+    const item = answered[problemId];
+    const problem = problems.find(p => p.id === Number(problemId));
+    return `
             <div class="submission-card" onclick="window.location.hash='#/workspace/${problemId}'" style="cursor: pointer;">
               <div class="submission-header">
                 <strong>${problem ? getProblemTitle(problem) : `Q${problemId}`}</strong>
@@ -1114,7 +1215,7 @@ function renderSubmissions(container) {
               <pre class="submission-code">${escapeHtml(item.code)}</pre>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     </div>
   `;
